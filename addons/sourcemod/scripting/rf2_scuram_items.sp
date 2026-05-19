@@ -35,9 +35,6 @@ float g_fFoulCowlBuffExpirationTime[MAXPLAYERS + 1];
 // Accursed Apparition variables
 float g_fStoredHealing[MAXPLAYERS + 1];
 
-// Sentry ammo regen variables
-bool g_bRocketRegenToggle[MAX_EDICTS];
-
 // Batter's bracers variables
 float velocity[3];
 
@@ -364,7 +361,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	}
 }
 
-public void RF2_OnCustomItemLoaded(const char[] fileName, const char[] sectionName, int index)
+public void RF2_OnCustomItemLoaded(const char[] fileName, const char[] sectionName, int index, KeyValues kv)
 {
 	if (!strcmp(fileName, "custom_items_scuram.cfg"))
     {
@@ -381,12 +378,6 @@ public void OnEntityCreated(int entity, const char[] classname)
 		return;
 	
 	g_bDontDamageOwner[entity] = false;
-	
-	if (IsBuilding(entity) && GetEntProp(entity, Prop_Send, "m_iObjectType") == 2)
-	{
-		CreateTimer(6.0, Timer_SentryAmmoRegen, EntIndexToEntRef(entity), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE|TIMER_FLAG_NO_MAPCHANGE);
-	}
-	
 	if (IsSkeleton(entity))
 	{
 		SDKHook(entity, SDKHook_OnTakeDamageAlive, OnSkeletonDamage);
@@ -1944,58 +1935,6 @@ Action Timer_BarrierDepletion(Handle timer, int client)
 	return Plugin_Continue;
 }
 
-Action Timer_SentryAmmoRegen(Handle timer, int buildingRef)
-{
-	int buildingIndex = EntRefToEntIndex(buildingRef);
-	
-	if (buildingIndex == INVALID_ENT_REFERENCE)
-	{
-		if (buildingRef >= 0 && buildingRef < 2049)
-			g_bRocketRegenToggle[buildingRef] = false;
-		
-		return Plugin_Stop;
-	}
-	
-	int builder = GetEntPropEnt(buildingIndex, Prop_Send, "m_hBuilder");
-	
-	if (IsPlayer(builder) && IsPlayerAlive(builder) 
-		&& RF2_GetPlayerItemAmount(builder, ItemEngi_Toadstool) > 0
-		&& !GetEntProp(buildingIndex, Prop_Send, "m_bBuilding") && !GetEntProp(buildingIndex, Prop_Send, "m_bHasSapper") 
-		&& !GetEntProp(buildingIndex, Prop_Send, "m_bCarried") && !GetEntProp(buildingIndex, Prop_Send, "m_bPlacing"))
-	{
-		int currentSentryBullet = GetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells");
-		int currentSentryRocket = GetEntProp(buildingIndex, Prop_Send, "m_iAmmoRockets");
-		
-		int bulletRegen = RoundToNearest(RF2_CalcItemMod(builder, ItemEngi_Toadstool, 2));
-		int rocketRegen = RoundToNearest(RF2_CalcItemMod(builder, ItemEngi_Toadstool, 3));
-		
-		switch (GetEntProp(buildingIndex, Prop_Send, "m_iUpgradeLevel"))
-		{
-			case 1:
-			{
-				SetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells", iclamp(currentSentryBullet + bulletRegen, 0, 150));
-			}
-			case 2:
-			{
-				SetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells", iclamp(currentSentryBullet + bulletRegen, 0, 200));
-			}
-			case 3:
-			{
-				SetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells", iclamp(currentSentryBullet + bulletRegen, 0, 200));
-				
-				if (g_bRocketRegenToggle[buildingIndex])
-				{
-					SetEntProp(buildingIndex, Prop_Send, "m_iAmmoRockets", iclamp(currentSentryRocket + rocketRegen, 0, 20));
-				}
-				
-				g_bRocketRegenToggle[buildingIndex] = !g_bRocketRegenToggle[buildingIndex];
-			}
-		}
-	}
-	
-	return Plugin_Continue;
-}
-
 Action Timer_CorpseBloomHeal(Handle timer, int client)
 {
 	if (!IsClientInGame(client) || !IsPlayerAlive(client) || RF2_GetPlayerItemAmount(client, g_iAccursedApparition) == 0)
@@ -2269,7 +2208,7 @@ float fmax(float val1, float val2)
 	return val1 > val2 ? val1 : val2;
 }
 
-int iclamp(int val, int min, int max)
+stock int iclamp(int val, int min, int max)
 {
 	if (val > max)
 		return max;
