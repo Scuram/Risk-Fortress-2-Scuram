@@ -271,10 +271,18 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	PrecacheSound(SND_LAW_FIRE, true);
-	PrecacheSound("rf2/sfx/custom_sounds/brass_bucket.wav", true);
-	PrecacheSound("rf2/sfx/custom_sounds/foul_cowl.wav", true);
-	AddFileToDownloadsTable("sound/rf2/sfx/custom_sounds/brass_bucket.wav");
-	AddFileToDownloadsTable("sound/rf2/sfx/custom_sounds/foul_cowl.wav");
+	if (FileExists("sound/rf2/sfx/custom_sounds/brass_bucket.wav"))
+	{
+		PrecacheSound("rf2/sfx/custom_sounds/brass_bucket.wav", true);
+		AddFileToDownloadsTable("sound/rf2/sfx/custom_sounds/brass_bucket.wav");
+	}
+	
+	if (FileExists("sound/rf2/sfx/custom_sounds/foul_cowl.wav"))
+	{
+		PrecacheSound("rf2/sfx/custom_sounds/foul_cowl.wav", true);
+		AddFileToDownloadsTable("sound/rf2/sfx/custom_sounds/foul_cowl.wav");
+	}
+	
 	PrecacheSound(SND_GLASS_BREAK, true);
 	g_BeamSprite = PrecacheModel("materials/sprites/laserbeam.vmt");
     g_HaloSprite = PrecacheModel("materials/sprites/glow01.vmt");
