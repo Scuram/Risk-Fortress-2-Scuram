@@ -282,9 +282,11 @@ public void OnMapStart()
 
 public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
+	if (!RF2_IsEnabled())
+		return Plugin_Continue;
+	
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	HookPlayerGroundChange(client);
-	
 	return Plugin_Continue;
 }
 
@@ -328,6 +330,9 @@ public void OnClientDisconnect(int client)
 
 public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
+	if (!RF2_IsEnabled())
+		return;
+	
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (client == 0)
         return;
@@ -373,14 +378,14 @@ public void RF2_OnCustomItemLoaded(const char[] fileName, const char[] sectionNa
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
-	if (!IsValidEntity(entity))
-		return;
-	
 	if (entity < 0 || entity >= MAX_EDICTS)
 		return;
 	
+	if (!IsValidEntity(entity))
+		return;
+	
 	g_bDontDamageOwner[entity] = false;
-	if (IsSkeleton(entity))
+	if (RF2_IsEnabled() && IsSkeleton(entity))
 	{
 		SDKHook(entity, SDKHook_OnTakeDamageAlive, OnSkeletonDamage);
 	}
@@ -555,6 +560,9 @@ public void RF2_OnPlayerItemUpdate(int client, int item)
 
 public void TF2_OnConditionRemoved(int client, TFCond condition)
 {
+	if (!RF2_IsEnabled())
+		return;
+	
 	if (condition == TFCond_MarkedForDeathSilent && g_bHoodOfSorrowsMarkedForDeath[client])
 	{
 		TF2_AddCondition(client, TFCond_MarkedForDeathSilent);
