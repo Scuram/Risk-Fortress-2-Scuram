@@ -526,7 +526,7 @@ public void RF2_OnPlayerItemUpdate(int client, int item)
 	
 	if (item == g_iHoodOfSorrows)
 	{
-		if (g_hTimers[client][HoodOfSorrows] == INVALID_HANDLE && !StrEqual(currentMap, "rf2_hellscape_r2", true) && RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0)
+		if (g_hTimers[client][HoodOfSorrows] == INVALID_HANDLE && StrContains(currentMap, "rf2_hellscape", true) == -1 && RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0)
 		{
 			RF2_ActivateStrangeItem(client);
 		}
@@ -594,7 +594,7 @@ public Action RF2_OnActivateStrangeItem(int client, int equipment)
 	char currentMap[64];
 	GetCurrentMap(currentMap, sizeof(currentMap));
 	
-	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && !StrEqual(currentMap, "rf2_hellscape_r2", true))
+	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && StrContains(currentMap, "rf2_hellscape", true) == -1)
 	{
 		float chance = RF2_GetItemMod(g_iHoodOfSorrows, 0);
 		if (RF2_RandChanceFloatEx(client, 0.0, 1.0, chance))
@@ -1679,7 +1679,7 @@ public Action RF2_OnEquipmentChargeGain(int client, int charges)
 	char currentMap[64];
 	GetCurrentMap(currentMap, sizeof(currentMap));
 	
-	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && !StrEqual(currentMap, "rf2_hellscape_r2", true))
+	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && StrContains(currentMap, "rf2_hellscape", true) == -1)
 	{
 		g_iHoodOfSorrowsEquipmentCharges[client] = charges;
 		
