@@ -56,6 +56,7 @@ float g_fStoredDmgInstant[MAXPLAYERS + 1];
 float g_fStoredDOT[MAXPLAYERS + 1];
 float g_fDamagePerTick[MAXPLAYERS + 1];
 int g_iForgottenKingsTicksLeft[MAXPLAYERS + 1];
+int g_iForgottenKingsCurrentBleedTicks[MAXPLAYERS + 1];
 
 // Airborne Attire variables
 bool g_bIsGrounded[MAXPLAYERS + 1];
@@ -106,7 +107,10 @@ int g_BeamSprite;
 int g_HaloSprite;
 
 // Heavy One Man Army variables
-float heavyOneManArmyProcChance[MAXPLAYERS + 1];
+float g_fHeavyOneManArmyProcChance[MAXPLAYERS + 1];
+
+// Lazer Gazers variables
+bool g_bLazerGazerNextShotCritBoosted[MAXPLAYERS + 1];
 
 
 // Timers
@@ -264,7 +268,7 @@ public void OnPluginStart()
 		}
 		g_fActiveSlow[client] = 1.0;
 		g_iAimframeStacks[client] = 0;
-		heavyOneManArmyProcChance[client] = RF2_GetItemMod(g_iHEAVYOneManArmy, 0);
+		g_fHeavyOneManArmyProcChance[client] = RF2_GetItemMod(g_iHEAVYOneManArmy, 0);
 	}
 	
 	HookEvent("player_death", Event_PlayerDeath, EventHookMode_Post);
@@ -665,6 +669,14 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			damage = 0.0;
 			return Plugin_Handled;
 		}
+		
+		if (RF2_GetPlayerItemAmount(attacker, g_iLazerGazers) > 0)
+		{
+			float currentHP = GetEntityCurrentHP(victim);
+			float maxHP = GetEntityMaxHP(victim);
+			
+			if (currentHP / maxHP > RF2_GetItemMod(g_iLazerGazers, 2)) g_bLazerGazerNextShotCritBoosted[attacker] = true;
+		}
 	}
 	
 	
@@ -800,10 +812,15 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 		}
 		
 		
-		
 		if (RF2_GetPlayerItemAmount(attacker, g_iDeadHead) > 0)
 		{
-			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iDeadHead, 0);
+			float damageMult = 1.0;
+			float currentHP = GetEntityCurrentHP(victim);
+			float maxHP = GetEntityMaxHP(victim);
+			
+			if (currentHP / maxHP > 0.8) damageMult = 2.0;
+			
+			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iDeadHead, 0) * damageMult;
 			changed = true;
 		}
 		
@@ -1487,15 +1504,20 @@ public Action RF2_OnCritChanceCalculation(int client, float &critChance)
 {
 	bool changed = false;
 	
-	if (RF2_GetPlayerItemAmount(client, Item_CrypticKeepsake) > 0)
+	if (RF2_GetPlayerItemAmount(client, Item_CrypticKeepsake) == 0)
 	{
 		if (RF2_GetPlayerItemAmount(client, g_iGrimTweeter) > 0)
 		{
 			critChance += RF2_GetItemMod(g_iGrimTweeter, 0);
 			changed = true;
 		}
+		if (g_bLazerGazerNextShotCritBoosted[client])
+		{
+			critChance += RF2_GetItemMod(g_iLazerGazers, 1);
+			g_bLazerGazerNextShotCritBoosted[client] = false;
+			changed = true;
+		}
 	}
-	
 	
 	// keep this last, reduces total crit chance with Spooktacles
 	if (RF2_GetPlayerItemAmount(client, g_iSpooktacles) > 0)
@@ -1520,6 +1542,12 @@ public Action RF2_OnCrypticCritDmgCalculation(int client, float &mult)
 	if (RF2_GetPlayerItemAmount(client, g_iGrimTweeter) > 0)
 	{
 		mult += RF2_GetItemMod(g_iGrimTweeter, 0);
+		changed = true;
+	}
+	if (g_bLazerGazerNextShotCritBoosted[client])
+	{
+		mult += RF2_GetItemMod(g_iLazerGazers, 1);
+		g_bLazerGazerNextShotCritBoosted[client] = false;
 		changed = true;
 	}
 	
@@ -1622,7 +1650,7 @@ public void RF2_OnDoItemKillEffects(int attacker, int inflictor, int victim, int
 	{
 		float random = RF2_GetItemMod(g_iBareBearBones, 0);
 		TFCond rune = GetClientRune(victim);
-		if (RF2_RandChanceFloatEx(attacker, 0.0, 1.0, random))
+		if (RF2_RandChanceFloatEx(attacker, 0.0, 1.0, random) && rune != TFCond_RuneVampire)
 		{
 			TF2_AddCondition(attacker, rune, RF2_GetItemMod(g_iBareBearBones, 1) + RF2_CalcItemMod(attacker, g_iBareBearBones, 2, -1));
 		}
@@ -1664,16 +1692,16 @@ public void RF2_OnDoItemKillEffects(int attacker, int inflictor, int victim, int
 			
 			if (StrEqual(classname, "tf_weapon_shotgun_hwg") || StrEqual(classname, "tf_weapon_fists"))
 			{
-				if (RF2_RandChanceFloatEx(attacker, 0.0, 1.0, heavyOneManArmyProcChance[attacker]))
+				if (RF2_RandChanceFloatEx(attacker, 0.0, 1.0, g_fHeavyOneManArmyProcChance[attacker]))
 				{
-					heavyOneManArmyProcChance[attacker] = RF2_GetItemMod(g_iHEAVYOneManArmy, 0);
+					g_fHeavyOneManArmyProcChance[attacker] = RF2_GetItemMod(g_iHEAVYOneManArmy, 0);
 					TF2_AddCondition(attacker, TFCond_DefenseBuffed, RF2_GetItemMod(g_iHEAVYOneManArmy, 2));
 				}
 				else
 				{
 					if (!TF2_IsPlayerInCondition(attacker, TFCond_DefenseBuffed))
 					{
-						heavyOneManArmyProcChance[attacker] += RF2_GetItemMod(g_iHEAVYOneManArmy, 1);
+						g_fHeavyOneManArmyProcChance[attacker] += RF2_GetItemMod(g_iHEAVYOneManArmy, 1);
 					}
 				}
 			}
@@ -2101,6 +2129,15 @@ Action Timer_ForgottenKingDamage(Handle timer, int client)
 	ApplyDotDamage(client, g_fDamagePerTick[client]);
 	g_fStoredDOT[client] -= g_fDamagePerTick[client];
 	g_iForgottenKingsTicksLeft[client]--;
+	
+	if (g_iForgottenKingsCurrentBleedTicks[client] >= (RF2_GetItemMod(g_iForgottenKings, 3) + RF2_CalcItemMod(client, g_iForgottenKings, 4, -1)))
+	{
+		float damage = RF2_GetCalculatedMaxHealth(client) * (RF2_GetItemMod(g_iForgottenKings, 5) + RF2_CalcItemMod(client, g_iForgottenKings, 6, -1));
+		SDKHooks_TakeDamage(client, 0, 0, damage, DMG_DOT);
+		CleanupDot(client);
+	}
+	
+	g_iForgottenKingsCurrentBleedTicks[client]++;
 
 	return Plugin_Continue;
 }
@@ -2201,6 +2238,7 @@ void CleanupDot(int client)
     g_fStoredDOT[client] = 0.0;
     g_fDamagePerTick[client] = 0.0;
 	g_iForgottenKingsTicksLeft[client] = 0;
+	g_iForgottenKingsCurrentBleedTicks[client] = 0;
 }
 
 bool IsValidClient(int client)
@@ -2454,4 +2492,36 @@ int GetRandomAimframeTarget(int client)
 	
 	int randomIndex = GetRandomInt(0, count - 1);
 	return clients[randomIndex];
+}
+
+float GetEntityCurrentHP(int client)
+{
+	float currentHP;
+	
+	if (IsValidClient(client))
+	{
+		currentHP = float(GetClientHealth(client));
+	}
+	else
+	{
+		currentHP = float(GetEntProp(client, Prop_Data, "m_iHealth"));
+	}
+	
+	return currentHP;
+}
+
+float GetEntityMaxHP(int client)
+{
+	float maxHP;
+	
+	if (IsValidClient(client))
+	{
+		maxHP = float(RF2_GetCalculatedMaxHealth(client));
+	}
+	else
+	{
+		maxHP = float(GetEntProp(client, Prop_Data, "m_iMaxHealth"));
+	}
+	
+	return maxHP;
 }
