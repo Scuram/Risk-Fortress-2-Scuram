@@ -1862,7 +1862,7 @@ public void Timer_TimebombKillCheck(Handle timer, int client)
 	{
 		TF2_RemoveCondition(client, TFCond_UberchargedCanteen);
 		int maxHP = RF2_GetCalculatedMaxHealth(client);
-		RF2_HealPlayer(client, RoundToNearest(maxHP*2.5));
+		RF2_HealPlayer(client, maxHP);
 		g_bKilledWithBombinomiconExplosion[client] = false;
 		g_iBombinomiconDeathStacks[client]++;
 		RF2_CalculatePlayerMaxSpeed(client);
