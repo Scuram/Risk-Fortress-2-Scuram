@@ -1326,8 +1326,8 @@ const float damageForce[3], const float damagePosition[3], int &damageCustom)
 	
 	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iSightliner) > 0)
 	{
-		float hpThreshold = RF2_GetCalculatedMaxHealth(victim) * RF2_GetItemMod(g_iSightliner, 1);
-		if (GetClientHealth(victim) - damage < hpThreshold)
+		float hpThreshold = float(RF2_GetCalculatedMaxHealth(victim)) * RF2_GetItemMod(g_iSightliner, 1);
+		if (float(GetClientHealth(victim)) < hpThreshold)
 		{
 			RF2_GivePlayerItem(victim, g_iSightliner, -(RF2_GetPlayerItemAmount(victim, g_iSightliner)));
 			EmitSoundToClient(victim, SND_GLASS_BREAK);
