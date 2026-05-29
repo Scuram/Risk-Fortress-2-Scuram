@@ -1210,27 +1210,6 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 	}
 	
 	damage = fmax(damage, 1.0);
-	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iBombinomicon) > 0)
-	{
-		if (GetClientHealth(victim) + g_fCurrentBarrier[victim] - damage < 1)
-		{
-			damage = 0.0;
-			if (!g_bPlayerExploding[victim])
-			{
-				g_bPlayerExploding[victim] = true;
-				RF2_CalculatePlayerMaxSpeed(victim);
-			}
-			
-			changed = true;
-			
-			if (g_hTimers[victim][Timebomb] == null)
-			{
-				g_hTimers[victim][Timebomb] = CreateTimer(1.0, Timer_Timebomb, GetClientUserId(victim), TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-				g_iTimebombTicks[victim] = 5;
-			}
-		}
-	}
-
 	return changed ? Plugin_Changed : Plugin_Continue;
 }
 
@@ -1331,6 +1310,26 @@ const float damageForce[3], const float damagePosition[3], int &damageCustom)
 		{
 			RF2_GivePlayerItem(victim, g_iSightliner, -(RF2_GetPlayerItemAmount(victim, g_iSightliner)));
 			EmitSoundToClient(victim, SND_GLASS_BREAK);
+		}
+	}
+	
+	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iBombinomicon) > 0)
+	{
+		if (GetClientHealth(victim) <= 0)
+		{
+			SetEntityHealth(victim, 1);
+			TF2_AddCondition(victim, TFCond_UberchargedCanteen);
+			if (!g_bPlayerExploding[victim])
+			{
+				g_bPlayerExploding[victim] = true;
+				RF2_CalculatePlayerMaxSpeed(victim);
+			}
+			
+			if (g_hTimers[victim][Timebomb] == null)
+			{
+				g_hTimers[victim][Timebomb] = CreateTimer(1.0, Timer_Timebomb, GetClientUserId(victim), TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+				g_iTimebombTicks[victim] = 5;
+			}
 		}
 	}
 }
@@ -1808,7 +1807,7 @@ bool HasCustomCondition(int client, int condId)
 
 public Action Timer_Timebomb(Handle timer, int client)
 {
-	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+	if (!(client = GetClientOfUserId(client)) || !IsPlayerAlive(client) || !RF2_IsEnabled())
 		return Plugin_Stop;
 	
 	if (g_iTimebombTicks[client] == 0)
@@ -1818,12 +1817,10 @@ public Action Timer_Timebomb(Handle timer, int client)
 		GetClientAbsAngles(client, g_fPlayerDeathAngles[client]);
 		float damage = RF2_GetItemMod(g_iBombinomicon, 2) + RF2_CalcItemMod(client, g_iBombinomicon, 3, -1);
 		float radius = RF2_GetItemMod(g_iBombinomicon, 0) + RF2_CalcItemMod(client, g_iBombinomicon, 1, -1);
-		
 		g_bPlayerExploding[client] = false;
-		
+		TF2_RemoveCondition(client, TFCond_UberchargedCanteen);
 		RF2_DoRadiusDamage(client, client, g_fPlayerDeathPos[client], g_iBombinomicon, damage, DMG_BLAST, radius, 1.0);
 		RF2_DoExplosionEffect(g_fPlayerDeathPos[client]);
-		
 		g_hTimers[client][TimebombKillCheck] = CreateTimer(0.1, Timer_TimebombKillCheck, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 		g_hTimers[client][Timebomb] = null;
 		return Plugin_Stop;
