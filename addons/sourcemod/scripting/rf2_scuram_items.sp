@@ -1818,7 +1818,6 @@ public Action Timer_Timebomb(Handle timer, int client)
 		float damage = RF2_GetItemMod(g_iBombinomicon, 2) + RF2_CalcItemMod(client, g_iBombinomicon, 3, -1);
 		float radius = RF2_GetItemMod(g_iBombinomicon, 0) + RF2_CalcItemMod(client, g_iBombinomicon, 1, -1);
 		g_bPlayerExploding[client] = false;
-		TF2_RemoveCondition(client, TFCond_UberchargedCanteen);
 		RF2_DoRadiusDamage(client, client, g_fPlayerDeathPos[client], g_iBombinomicon, damage, DMG_BLAST, radius, 1.0);
 		RF2_DoExplosionEffect(g_fPlayerDeathPos[client]);
 		g_hTimers[client][TimebombKillCheck] = CreateTimer(0.1, Timer_TimebombKillCheck, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
@@ -1861,6 +1860,7 @@ public void Timer_TimebombKillCheck(Handle timer, int client)
 	}
 	else
 	{
+		TF2_RemoveCondition(client, TFCond_UberchargedCanteen);
 		int maxHP = RF2_GetCalculatedMaxHealth(client);
 		RF2_HealPlayer(client, RoundToNearest(maxHP*2.5));
 		g_bKilledWithBombinomiconExplosion[client] = false;
