@@ -1209,18 +1209,7 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 		}
 	}
 	
-	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iSightliner) > 0)
-	{
-		float hpThreshold = RF2_GetCalculatedMaxHealth(victim) * RF2_GetItemMod(g_iSightliner, 1);
-		if (GetClientHealth(victim) - damage < hpThreshold)
-		{
-			RF2_GivePlayerItem(victim, g_iSightliner, -(RF2_GetPlayerItemAmount(victim, g_iSightliner)));
-			EmitSoundToClient(victim, SND_GLASS_BREAK);
-		}
-	}
-	
 	damage = fmax(damage, 1.0);
-	
 	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iBombinomicon) > 0)
 	{
 		if (GetClientHealth(victim) + g_fCurrentBarrier[victim] - damage < 1)
@@ -1256,7 +1245,6 @@ const float damageForce[3], const float damagePosition[3], int &damageCustom)
 	bool selfDamage = victim == attacker;
 			
 	RF2_SetEntItemProc(attacker, Item_Null);
-	
 	if (IsValidClient(victim) && (IsValidClient(attacker) || IsSkeleton(attacker)))
 	{
 		int victimWeapon = GetPlayerWeaponSlot(victim, TFWeaponSlot_Melee);
@@ -1333,6 +1321,16 @@ const float damageForce[3], const float damagePosition[3], int &damageCustom)
 				
 				g_iVoodooJujuProcs[attacker] += 1;
 			}
+		}
+	}
+	
+	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iSightliner) > 0)
+	{
+		float hpThreshold = RF2_GetCalculatedMaxHealth(victim) * RF2_GetItemMod(g_iSightliner, 1);
+		if (GetClientHealth(victim) - damage < hpThreshold)
+		{
+			RF2_GivePlayerItem(victim, g_iSightliner, -(RF2_GetPlayerItemAmount(victim, g_iSightliner)));
+			EmitSoundToClient(victim, SND_GLASS_BREAK);
 		}
 	}
 }
