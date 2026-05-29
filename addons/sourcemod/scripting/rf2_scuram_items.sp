@@ -1944,6 +1944,7 @@ public void Timer_RemoveBonkBoyBuff(Handle timer, int client)
 	
 	g_iBonkBoyStacks[client] = 0;
 	g_hTimers[client][BonkBoy] = null;
+	RF2_CalculatePlayerMaxSpeed(client);
 }
 
 public Action Timer_BarrierDepletion(Handle timer, int client)
