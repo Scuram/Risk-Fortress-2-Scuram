@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-
+#define DMG_MELEE DMG_BLAST_SURFACE
 #define MAX_CUSTOM_CONDITIONS 10
 #define SND_LAW_FIRE "weapons/sentry_rocket.wav"
 #define SND_GLASS_BREAK "physics/glass/glass_sheet_break3.wav"
@@ -34,9 +34,6 @@ float g_fFoulCowlBuffExpirationTime[MAXPLAYERS + 1];
 
 // Accursed Apparition variables
 float g_fStoredHealing[MAXPLAYERS + 1];
-
-// Sentry ammo regen variables
-bool g_bRocketRegenToggle[MAX_EDICTS];
 
 // Batter's bracers variables
 float velocity[3];
@@ -263,7 +260,7 @@ public void OnPluginStart()
 			HookPlayerGroundChange(client);
 			if (RF2_GetPlayerItemAmount(client, g_iAimframe) > 0)
 			{
-				g_hTimers[client][AimframeMarkOn] = CreateTimer(RF2_GetItemMod(g_iAimframe, 0), Timer_AimframeMarkOn, client, TIMER_REPEAT| TIMER_FLAG_NO_MAPCHANGE);
+				g_hTimers[client][AimframeMarkOn] = CreateTimer(RF2_GetItemMod(g_iAimframe, 0), Timer_AimframeMarkOn, GetClientUserId(client), TIMER_REPEAT| TIMER_FLAG_NO_MAPCHANGE);
 			}
 		}
 		g_fActiveSlow[client] = 1.0;
@@ -278,8 +275,18 @@ public void OnPluginStart()
 public void OnMapStart()
 {
 	PrecacheSound(SND_LAW_FIRE, true);
-	PrecacheSound("rf2/sfx/custom_sounds/brass_bucket.wav", true);
-	PrecacheSound("rf2/sfx/custom_sounds/foul_cowl.wav", true);
+	if (FileExists("sound/rf2/sfx/custom_sounds/brass_bucket.wav"))
+	{
+		PrecacheSound("rf2/sfx/custom_sounds/brass_bucket.wav", true);
+		AddFileToDownloadsTable("sound/rf2/sfx/custom_sounds/brass_bucket.wav");
+	}
+	
+	if (FileExists("sound/rf2/sfx/custom_sounds/foul_cowl.wav"))
+	{
+		PrecacheSound("rf2/sfx/custom_sounds/foul_cowl.wav", true);
+		AddFileToDownloadsTable("sound/rf2/sfx/custom_sounds/foul_cowl.wav");
+	}
+	
 	PrecacheSound(SND_GLASS_BREAK, true);
 	g_BeamSprite = PrecacheModel("materials/sprites/laserbeam.vmt");
     g_HaloSprite = PrecacheModel("materials/sprites/glow01.vmt");
@@ -287,9 +294,11 @@ public void OnMapStart()
 
 public Action OnPlayerSpawn(Event event, const char[] name, bool dontBroadcast)
 {
+	if (!RF2_IsEnabled())
+		return Plugin_Continue;
+	
 	int client = GetClientOfUserId(event.GetInt("userid"));
 	HookPlayerGroundChange(client);
-	
 	return Plugin_Continue;
 }
 
@@ -309,10 +318,10 @@ public void OnClientDisconnect(int client)
 {
 	for (int i = 0; i < view_as<int>(TimerSlotCount); i++)
 	{
-		if (g_hTimers[client][i] != INVALID_HANDLE)
+		if (g_hTimers[client][i] != null)
 		{
 			delete (g_hTimers[client][i]);
-			g_hTimers[client][i] = INVALID_HANDLE;
+			g_hTimers[client][i] = null;
 		}
 	}
 	
@@ -333,6 +342,9 @@ public void OnClientDisconnect(int client)
 
 public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast)
 {
+	if (!RF2_IsEnabled())
+		return;
+	
     int client = GetClientOfUserId(event.GetInt("userid"));
     if (client == 0)
         return;
@@ -342,10 +354,10 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
     // cancel timers if they exist
     for (int i = 0; i < view_as<int>(TimerSlotCount); i++)
 	{
-		if (g_hTimers[client][i] != INVALID_HANDLE && i != 13)
+		if (g_hTimers[client][i] != null && i != 13)
 		{
 			delete (g_hTimers[client][i]);
-			g_hTimers[client][i] = INVALID_HANDLE;
+			g_hTimers[client][i] = null;
 		}
 	}
 	
@@ -368,7 +380,7 @@ public void Event_PlayerDeath(Event event, const char[] name, bool dontBroadcast
 	}
 }
 
-public void RF2_OnCustomItemLoaded(const char[] fileName, const char[] sectionName, int index)
+public void RF2_OnCustomItemLoaded(const char[] fileName, const char[] sectionName, int index, KeyValues kv)
 {
 	if (!strcmp(fileName, "custom_items_scuram.cfg"))
     {
@@ -378,20 +390,14 @@ public void RF2_OnCustomItemLoaded(const char[] fileName, const char[] sectionNa
 
 public void OnEntityCreated(int entity, const char[] classname)
 {
-	if (!IsValidEntity(entity))
-		return;
-	
 	if (entity < 0 || entity >= MAX_EDICTS)
 		return;
 	
+	if (!IsValidEntity(entity))
+		return;
+	
 	g_bDontDamageOwner[entity] = false;
-	
-	if (IsBuilding(entity) && GetEntProp(entity, Prop_Send, "m_iObjectType") == 2)
-	{
-		CreateTimer(6.0, Timer_SentryAmmoRegen, EntIndexToEntRef(entity), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE|TIMER_FLAG_NO_MAPCHANGE);
-	}
-	
-	if (IsSkeleton(entity))
+	if (RF2_IsEnabled() && IsSkeleton(entity))
 	{
 		SDKHook(entity, SDKHook_OnTakeDamageAlive, OnSkeletonDamage);
 	}
@@ -511,11 +517,11 @@ public void RF2_OnPlayerItemUpdate(int client, int item)
 		}
 	}
 	
-	if (item == g_iAimframe && RF2_GetPlayerItemAmount(client, g_iAimframe) > 0 && g_hTimers[client][AimframeMarkOn] == INVALID_HANDLE)
+	if (item == g_iAimframe && RF2_GetPlayerItemAmount(client, g_iAimframe) > 0 && g_hTimers[client][AimframeMarkOn] == null)
 	{
 		g_iAimframeStacks[client] = 0;
 		
-		g_hTimers[client][AimframeMarkOn] = CreateTimer(RF2_GetItemMod(g_iAimframe, 0), Timer_AimframeMarkOn, client, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE | TIMER_FLAG_NO_MAPCHANGE);
+		g_hTimers[client][AimframeMarkOn] = CreateTimer(RF2_GetItemMod(g_iAimframe, 0), Timer_AimframeMarkOn, GetClientUserId(client), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE | TIMER_FLAG_NO_MAPCHANGE);
 	}
 	
 	if (item == g_iHEAVYOneManArmy && TF2_GetPlayerClass(client) == TFClass_Heavy)
@@ -537,7 +543,7 @@ public void RF2_OnPlayerItemUpdate(int client, int item)
 	
 	if (item == g_iHoodOfSorrows)
 	{
-		if (g_hTimers[client][HoodOfSorrows] == INVALID_HANDLE && !StrEqual(currentMap, "rf2_hellscape_r2", true) && RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0)
+		if (g_hTimers[client][HoodOfSorrows] == null && StrContains(currentMap, "rf2_hellscape", true) == -1 && RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0)
 		{
 			RF2_ActivateStrangeItem(client);
 		}
@@ -566,6 +572,9 @@ public void RF2_OnPlayerItemUpdate(int client, int item)
 
 public void TF2_OnConditionRemoved(int client, TFCond condition)
 {
+	if (!RF2_IsEnabled())
+		return;
+	
 	if (condition == TFCond_MarkedForDeathSilent && g_bHoodOfSorrowsMarkedForDeath[client])
 	{
 		TF2_AddCondition(client, TFCond_MarkedForDeathSilent);
@@ -599,13 +608,13 @@ public Action RF2_OnActivateStrangeItem(int client, int equipment)
 		g_isPeacebreakerRocketsRemaining[client] = RoundToNearest(RF2_GetItemMod(g_isPeacebreaker, 0));
 		float interval = RF2_GetItemMod(g_isPeacebreaker, 1);
 		
-		CreateTimer(interval, Timer_FireHomingRocket, client, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE | TIMER_FLAG_NO_MAPCHANGE);
+		CreateTimer(interval, Timer_FireHomingRocket, GetClientUserId(client), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE | TIMER_FLAG_NO_MAPCHANGE);
 	}
 	
 	char currentMap[64];
 	GetCurrentMap(currentMap, sizeof(currentMap));
 	
-	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && !StrEqual(currentMap, "rf2_hellscape_r2", true))
+	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && StrContains(currentMap, "rf2_hellscape", true) == -1)
 	{
 		float chance = RF2_GetItemMod(g_iHoodOfSorrows, 0);
 		if (RF2_RandChanceFloatEx(client, 0.0, 1.0, chance))
@@ -811,7 +820,6 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			}
 		}
 		
-		
 		if (RF2_GetPlayerItemAmount(attacker, g_iDeadHead) > 0)
 		{
 			float damageMult = 1.0;
@@ -824,7 +832,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			changed = true;
 		}
 		
-		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && !(damageType & DMG_CLUB))
+		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && HasParasightDamageBoost(weapon, damageType, damageCustom))
 		{
 			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iParasight, 2);
 			changed = true;
@@ -855,7 +863,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			}
 		}
 		
-		if (RF2_GetPlayerItemAmount(attacker, g_iHEAVYOneManArmy) > 0 && TF2_GetPlayerClass(attacker) == TFClass_Heavy && (damageType & DMG_CLUB))
+		if (RF2_GetPlayerItemAmount(attacker, g_iHEAVYOneManArmy) > 0 && TF2_GetPlayerClass(attacker) == TFClass_Heavy && (damageType & DMG_MELEE))
 		{
 			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iHEAVYOneManArmy, 4);
 			changed = true;
@@ -906,7 +914,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 
 	if (IsValidClient(victim))
 	{
-		if (RF2_GetPlayerItemAmount(victim, g_iDEMOFusedPlates) > 0 && TF2_GetPlayerClass(victim) == TFClass_DemoMan && HasBoots_Wearable(victim) && damageType & DMG_CLUB)
+		if (RF2_GetPlayerItemAmount(victim, g_iDEMOFusedPlates) > 0 && TF2_GetPlayerClass(victim) == TFClass_DemoMan && HasBoots_Wearable(victim) && damageType & DMG_MELEE)
 		{
 			damage *= 1.0 - RF2_GetItemMod(g_iDEMOFusedPlates, 0) - RF2_CalcItemMod(victim, g_iDEMOFusedPlates, 1, -1);
 			changed = true;
@@ -945,14 +953,14 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 				g_iBonkBoyStacks[victim] += 1;
 			}
 			
-			if (g_hTimers[victim][BonkBoy] != INVALID_HANDLE)
+			if (g_hTimers[victim][BonkBoy] != null)
 			{
 				delete (g_hTimers[victim][BonkBoy]);
-				g_hTimers[victim][BonkBoy] = INVALID_HANDLE;
+				g_hTimers[victim][BonkBoy] = null;
 			}
 			
 			RF2_CalculatePlayerMaxSpeed(victim);
-			g_hTimers[victim][BonkBoy] = CreateTimer(duration, Timer_RemoveBonkBoyBuff, victim, TIMER_FLAG_NO_MAPCHANGE);
+			g_hTimers[victim][BonkBoy] = CreateTimer(duration, Timer_RemoveBonkBoyBuff, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
 		}
 		
 		if (RF2_GetPlayerItemAmount(victim, g_iDieRegimePanzerung) > 0 && !selfDamage)
@@ -983,14 +991,13 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 					}
 				}
 				
-				if (g_hTimers[victim][BulletResist] != INVALID_HANDLE)
+				if (g_hTimers[victim][BulletResist] != null)
 				{
 					delete (g_hTimers[victim][BulletResist]);
-					g_hTimers[victim][BulletResist] = INVALID_HANDLE;
+					g_hTimers[victim][BulletResist] = null;
 				}
 				
-				g_hTimers[victim][BulletResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveBulletResist, victim, TIMER_FLAG_NO_MAPCHANGE);
-				
+				g_hTimers[victim][BulletResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveBulletResist, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
 				damage *= 1.0 - bulletResist;
 				changed = true;
 			}
@@ -1021,19 +1028,18 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 					}
 				}
 				
-				if (g_hTimers[victim][BlastResist] != INVALID_HANDLE)
+				if (g_hTimers[victim][BlastResist] != null)
 				{
 					delete (g_hTimers[victim][BlastResist]);
-					g_hTimers[victim][BlastResist] = INVALID_HANDLE;
+					g_hTimers[victim][BlastResist] = null;
 				}
 				
-				g_hTimers[victim][BlastResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveBlastResist, victim, TIMER_FLAG_NO_MAPCHANGE);
-				
+				g_hTimers[victim][BlastResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveBlastResist, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
 				damage *= 1.0 - blastResist;
 				changed = true;
 			}
 			
-			if (damageType & DMG_CLUB)
+			if (damageType & DMG_MELEE)
 			{
 				g_iMeleeResistStacks[victim] += 1;
 				float meleeResist = 0.0;
@@ -1059,13 +1065,13 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 					}
 				}
 				
-				if (g_hTimers[victim][MeleeResist] != INVALID_HANDLE)
+				if (g_hTimers[victim][MeleeResist] != null)
 				{
 					delete (g_hTimers[victim][MeleeResist]);
-					g_hTimers[victim][MeleeResist] = INVALID_HANDLE;
+					g_hTimers[victim][MeleeResist] = null;
 				}
 				
-				g_hTimers[victim][MeleeResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveMeleeResist, victim, TIMER_FLAG_NO_MAPCHANGE);
+				g_hTimers[victim][MeleeResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveMeleeResist, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
 				
 				damage *= 1.0 - meleeResist;
 				changed = true;
@@ -1097,13 +1103,13 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 					}
 				}
 				
-				if (g_hTimers[victim][CritResist] != INVALID_HANDLE)
+				if (g_hTimers[victim][CritResist] != null)
 				{
 					delete (g_hTimers[victim][CritResist]);
-					g_hTimers[victim][CritResist] = INVALID_HANDLE;
+					g_hTimers[victim][CritResist] = null;
 				}
 				
-				g_hTimers[victim][CritResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveCritResist, victim, TIMER_FLAG_NO_MAPCHANGE);
+				g_hTimers[victim][CritResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveCritResist, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
 				
 				damage *= 1.0 - critResist;
 				changed = true;
@@ -1126,12 +1132,11 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 	}
 	
 	damage = fmax(damage, 1.0);
-	
 	return changed ? Plugin_Changed : Plugin_Continue;
 }
 
 public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float &damage, int &damageType, int &weapon, 
-	float damageForce[3], float damagePosition[3], int damageCustom)
+	float damageForce[3], float damagePosition[3], int damageCustom, int attackerItem, int inflictorItem, float &procCoeff)
 {
 	bool changed = false;
 	bool selfDamage = victim == attacker;
@@ -1149,7 +1154,6 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 	{
 		char classname[64];
 		GetEdictClassname(inflictor, classname, sizeof(classname));
-		
 		if (StrEqual(classname, "tf_projectile_pipe"))
 		{
 			float damageReduction = 1 / ( 1 + ( 1 / RF2_GetItemMod(g_iDEMOFusedPlates, 5) * RF2_GetPlayerItemAmount(victim, g_iDEMOFusedPlates)));	// don't ask
@@ -1161,28 +1165,23 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iForgottenKings) > 0 && !(damageType & DMG_DOT) && (!(damageType & DMG_SLASH) || IsSkeleton(attacker)) && damageType != 2056)
 	{
 		float origDamage = damage;
-		
 		if (IsBuilding(inflictor) && !IsSentryRocketDamage(inflictor))
 		{
 			origDamage *= 0.4;
 		}
 			
-		
 		float damageInstant = origDamage * RF2_GetItemMod(g_iForgottenKings, 0);
-		
 		float damageDOT = origDamage - damageInstant;
-		
 		g_fStoredDOT[victim] += damageDOT;
 		g_iForgottenKingsTicksLeft[victim] = RoundToNearest(RF2_GetItemMod(g_iForgottenKings, 1) + RF2_CalcItemMod(victim, g_iForgottenKings, 2, -1));
 		g_fDamagePerTick[victim] = g_fStoredDOT[victim] / g_iForgottenKingsTicksLeft[victim];
-		
 		damage = damageInstant;
 		changed = true;
 		
-		if (g_hTimers[victim][ForgottenKing] == INVALID_HANDLE)
+		if (g_hTimers[victim][ForgottenKing] == null)
         {
             g_hTimers[victim][ForgottenKing] =
-                CreateTimer(1.0, Timer_ForgottenKingDamage, victim, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+                CreateTimer(1.0, Timer_ForgottenKingDamage, GetClientUserId(victim), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
         }
 	}
 	
@@ -1200,39 +1199,7 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 		}
 	}
 	
-	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iSightliner) > 0)
-	{
-		float hpThreshold = RF2_GetCalculatedMaxHealth(victim) * RF2_GetItemMod(g_iSightliner, 1);
-		if (GetClientHealth(victim) - damage < hpThreshold)
-		{
-			RF2_GivePlayerItem(victim, g_iSightliner, -(RF2_GetPlayerItemAmount(victim, g_iSightliner)));
-			EmitSoundToClient(victim, SND_GLASS_BREAK);
-		}
-	}
-	
 	damage = fmax(damage, 1.0);
-	
-	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iBombinomicon) > 0)
-	{
-		if (GetClientHealth(victim) + g_fCurrentBarrier[victim] - damage < 1)
-		{
-			damage = 0.0;
-			if (!g_bPlayerExploding[victim])
-			{
-				g_bPlayerExploding[victim] = true;
-				RF2_CalculatePlayerMaxSpeed(victim);
-			}
-			
-			changed = true;
-			
-			if (g_hTimers[victim][Timebomb] == INVALID_HANDLE)
-			{
-				g_hTimers[victim][Timebomb] = CreateTimer(1.0, Timer_Timebomb, victim, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
-				g_iTimebombTicks[victim] = 5;
-			}
-		}
-	}
-
 	return changed ? Plugin_Changed : Plugin_Continue;
 }
 
@@ -1247,7 +1214,6 @@ const float damageForce[3], const float damagePosition[3], int &damageCustom)
 	bool selfDamage = victim == attacker;
 			
 	RF2_SetEntItemProc(attacker, Item_Null);
-	
 	if (IsValidClient(victim) && (IsValidClient(attacker) || IsSkeleton(attacker)))
 	{
 		int victimWeapon = GetPlayerWeaponSlot(victim, TFWeaponSlot_Melee);
@@ -1316,13 +1282,43 @@ const float damageForce[3], const float damagePosition[3], int &damageCustom)
 					g_fCurrentBarrier[attacker] = float(RF2_GetCalculatedMaxHealth(attacker));
 				}
 				
-				if (g_hTimers[attacker][BarrierDepletion] == INVALID_HANDLE)
+				if (g_hTimers[attacker][BarrierDepletion] == null)
 				{
 					g_hTimers[attacker][BarrierDepletion] =
-						CreateTimer(1.0, Timer_BarrierDepletion, attacker, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+						CreateTimer(1.0, Timer_BarrierDepletion, GetClientUserId(attacker), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 				}
 				
 				g_iVoodooJujuProcs[attacker] += 1;
+			}
+		}
+	}
+	
+	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iSightliner) > 0)
+	{
+		float hpThreshold = float(RF2_GetCalculatedMaxHealth(victim)) * RF2_GetItemMod(g_iSightliner, 1);
+		if (float(GetClientHealth(victim)) < hpThreshold)
+		{
+			RF2_GivePlayerItem(victim, g_iSightliner, -(RF2_GetPlayerItemAmount(victim, g_iSightliner)));
+			EmitSoundToClient(victim, SND_GLASS_BREAK);
+		}
+	}
+	
+	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iBombinomicon) > 0)
+	{
+		if (GetClientHealth(victim) <= 0)
+		{
+			SetEntityHealth(victim, 1);
+			TF2_AddCondition(victim, TFCond_UberchargedCanteen);
+			if (!g_bPlayerExploding[victim])
+			{
+				g_bPlayerExploding[victim] = true;
+				RF2_CalculatePlayerMaxSpeed(victim);
+			}
+			
+			if (g_hTimers[victim][Timebomb] == null)
+			{
+				g_hTimers[victim][Timebomb] = CreateTimer(1.0, Timer_Timebomb, GetClientUserId(victim), TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+				g_iTimebombTicks[victim] = 5;
 			}
 		}
 	}
@@ -1349,7 +1345,7 @@ public Action OnSkeletonDamage(int victim, int &attacker, int &inflictor,
 			changed = true;
 		}
 		
-		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && !(damagetype & DMG_CLUB))
+		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && HasParasightDamageBoost(weapon, damagetype, 0))
 		{
 			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iParasight, 2);
 			changed = true;
@@ -1464,10 +1460,10 @@ public Action RF2_OnHealingApplied(int client, int &amount, bool &allowOverheal,
 		if (RoundToNearest(g_fStoredHealing[client]) > maxHP)
 			g_fStoredHealing[client] = float(maxHP);		// cap stored healing to player's max hp
 		
-		if (g_hTimers[client][AccursedApparition] == INVALID_HANDLE)
+		if (g_hTimers[client][AccursedApparition] == null)
         {
             g_hTimers[client][AccursedApparition] =
-                CreateTimer(0.1, Timer_CorpseBloomHeal, client, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+                CreateTimer(0.1, Timer_CorpseBloomHeal, GetClientUserId(client), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
         }
 		
 		amount = 0;
@@ -1488,10 +1484,10 @@ public Action RF2_OnHealingApplied(int client, int &amount, bool &allowOverheal,
 		g_fCurrentBarrier[client] = float(RF2_GetCalculatedMaxHealth(client));
 	}
 	
-	if (g_hTimers[client][BarrierDepletion] == INVALID_HANDLE)
+	if (g_hTimers[client][BarrierDepletion] == null)
 	{
 		g_hTimers[client][BarrierDepletion] =
-			CreateTimer(1.0, Timer_BarrierDepletion, client, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+			CreateTimer(1.0, Timer_BarrierDepletion, GetClientUserId(client), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 	}
 	
 	if (amount != origHealing || changed == true)
@@ -1664,10 +1660,10 @@ public void RF2_OnDoItemKillEffects(int attacker, int inflictor, int victim, int
 			g_fCurrentBarrier[attacker] = float(RF2_GetCalculatedMaxHealth(attacker));
 		}
 		
-		if (g_hTimers[attacker][BarrierDepletion] == INVALID_HANDLE)
+		if (g_hTimers[attacker][BarrierDepletion] == null)
         {
             g_hTimers[attacker][BarrierDepletion] =
-                CreateTimer(1.0, Timer_BarrierDepletion, attacker, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+                CreateTimer(1.0, Timer_BarrierDepletion, GetClientUserId(attacker), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
         }
 	}
 	
@@ -1713,16 +1709,15 @@ public Action RF2_OnEquipmentChargeGain(int client, int charges)
 {
 	char currentMap[64];
 	GetCurrentMap(currentMap, sizeof(currentMap));
-	
-	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && !StrEqual(currentMap, "rf2_hellscape_r2", true))
+	if (RF2_GetPlayerItemAmount(client, g_iHoodOfSorrows) > 0 && StrContains(currentMap, "rf2_hellscape", true) == -1)
 	{
 		g_iHoodOfSorrowsEquipmentCharges[client] = charges;
 		
-		if (g_hTimers[client][HoodOfSorrows] == INVALID_HANDLE)
+		if (g_hTimers[client][HoodOfSorrows] == null)
 		{
 			RF2_ActivateStrangeItem(client);
 			g_iHoodOfSorrowsEquipmentCharges[client]--;
-			g_hTimers[client][HoodOfSorrows] = CreateTimer(1.0, Timer_HoodOfSorrows, client, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+			g_hTimers[client][HoodOfSorrows] = CreateTimer(1.0, Timer_HoodOfSorrows, GetClientUserId(client), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 			return Plugin_Stop;
 		}
 	}
@@ -1730,34 +1725,33 @@ public Action RF2_OnEquipmentChargeGain(int client, int charges)
 	return Plugin_Continue;
 }
 
-Action Timer_HoodOfSorrows(Handle timer, int client)
+public Action Timer_HoodOfSorrows(Handle timer, int client)
 {
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return Plugin_Stop;
+	
 	if (g_iHoodOfSorrowsEquipmentCharges[client] <= 0 || RF2_GetPlayerEquipmentItem(client) == Item_Null)
 	{
-		g_hTimers[client][HoodOfSorrows] = INVALID_HANDLE;
+		g_hTimers[client][HoodOfSorrows] = null;
 		return Plugin_Stop;
 	}
 	
 	RF2_ActivateStrangeItem(client);
 	g_iHoodOfSorrowsEquipmentCharges[client]--;
-
-	
 	return Plugin_Continue;
 }
 
 void ApplySlowEffect(int client, float slowPercent, float duration)
 {
-	if (g_hTimers[client][RemoveSlow] != INVALID_HANDLE)
+	if (g_hTimers[client][RemoveSlow] != null)
 	{
 		delete (g_hTimers[client][RemoveSlow]);
-		g_hTimers[client][RemoveSlow] = INVALID_HANDLE;
+		g_hTimers[client][RemoveSlow] = null;
 	}
 	
 	g_fActiveSlow[client] = fclamp(1.0-slowPercent, 0.05, 1.00);
-	
 	RF2_CalculatePlayerMaxSpeed(client);
-	
-	g_hTimers[client][RemoveSlow] = CreateTimer(duration, Timer_RemoveSlowEffect, client, TIMER_FLAG_NO_MAPCHANGE);
+	g_hTimers[client][RemoveSlow] = CreateTimer(duration, Timer_RemoveSlowEffect, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
 }
 
 void EndSlowEffect(int client)
@@ -1772,22 +1766,25 @@ void ApplyCustomCondition(int client, int condId, float duration)
 		return;
 	
 	g_CustomConditions[client][condId] = true;
-
 	int data = (condId << 16) | client;
-	CreateTimer(duration, RemoveCustomCondition, data);
+	DataPack pack = new DataPack();
+	CreateDataTimer(duration, Timer_RemoveCustomCondition, pack, TIMER_FLAG_NO_MAPCHANGE);
+	pack.WriteCell(GetClientUserId(client));
+	pack.WriteCell(data);
 }
 
-Action RemoveCustomCondition(Handle timer, any data)
+public void Timer_RemoveCustomCondition(Handle timer, DataPack pack)
 {
-	int client = data & 0xFFFF;
-	int condId = (data >> 16) & 0xFFFF;
+	pack.Reset();
+	int client = GetClientOfUserId(pack.ReadCell());
+	if (!client || !RF2_IsEnabled())
+		return;
 	
+	int condId = (pack.ReadCell() >> 16) & 0xFFFF;
 	if (client > 0 && client <= MaxClients && IsClientInGame(client) && IsPlayerAlive(client))
 	{
 		g_CustomConditions[client][condId] = false;
 	}
-	
-	return Plugin_Stop;
 }
 
 bool HasCustomCondition(int client, int condId)
@@ -1798,8 +1795,11 @@ bool HasCustomCondition(int client, int condId)
 	return g_CustomConditions[client][condId];
 }
 
-Action Timer_Timebomb(Handle timer, int client)
+public Action Timer_Timebomb(Handle timer, int client)
 {
+	if (!(client = GetClientOfUserId(client)) || !IsPlayerAlive(client) || !RF2_IsEnabled())
+		return Plugin_Stop;
+	
 	if (g_iTimebombTicks[client] == 0)
 	{
 		GetClientAbsOrigin(client, g_fPlayerDeathPos[client]);
@@ -1807,14 +1807,11 @@ Action Timer_Timebomb(Handle timer, int client)
 		GetClientAbsAngles(client, g_fPlayerDeathAngles[client]);
 		float damage = RF2_GetItemMod(g_iBombinomicon, 2) + RF2_CalcItemMod(client, g_iBombinomicon, 3, -1);
 		float radius = RF2_GetItemMod(g_iBombinomicon, 0) + RF2_CalcItemMod(client, g_iBombinomicon, 1, -1);
-		
 		g_bPlayerExploding[client] = false;
-		
 		RF2_DoRadiusDamage(client, client, g_fPlayerDeathPos[client], g_iBombinomicon, damage, DMG_BLAST, radius, 1.0);
 		RF2_DoExplosionEffect(g_fPlayerDeathPos[client]);
-		
-		g_hTimers[client][TimebombKillCheck] = CreateTimer(0.1, Timer_TimebombKillCheck, client, TIMER_FLAG_NO_MAPCHANGE);
-		g_hTimers[client][Timebomb] = INVALID_HANDLE;
+		g_hTimers[client][TimebombKillCheck] = CreateTimer(0.1, Timer_TimebombKillCheck, GetClientUserId(client), TIMER_FLAG_NO_MAPCHANGE);
+		g_hTimers[client][Timebomb] = null;
 		return Plugin_Stop;
 	}
 	
@@ -1842,113 +1839,104 @@ Action Timer_Timebomb(Handle timer, int client)
 	return Plugin_Continue;
 }
 
-Action Timer_TimebombKillCheck(Handle timer, int client)
+public void Timer_TimebombKillCheck(Handle timer, int client)
 {
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
+	
 	if (!g_bKilledWithBombinomiconExplosion[client])
 	{
 		ForcePlayerSuicide(client);
 	}
 	else
 	{
+		TF2_RemoveCondition(client, TFCond_UberchargedCanteen);
 		int maxHP = RF2_GetCalculatedMaxHealth(client);
-		RF2_HealPlayer(client, RoundToNearest(maxHP*2.5));
+		RF2_HealPlayer(client, maxHP);
 		g_bKilledWithBombinomiconExplosion[client] = false;
 		g_iBombinomiconDeathStacks[client]++;
 		RF2_CalculatePlayerMaxSpeed(client);
 	}
-	
-	return Plugin_Stop;
 }
 
-Action Timer_RemoveSlowEffect(Handle timer, int client)
+public void Timer_RemoveSlowEffect(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][RemoveSlow] != timer)
-		return Plugin_Stop;
+		return;
 	
-	g_hTimers[client][RemoveSlow] = INVALID_HANDLE;
-	
-	
+	g_hTimers[client][RemoveSlow] = null;
 	EndSlowEffect(client);
-	return Plugin_Stop;
 }
 
-Action Timer_RemoveBulletResist(Handle timer, int client)
+public void Timer_RemoveBulletResist(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][BulletResist] != timer)
-		return Plugin_Stop;
+		return;
 	
 	g_iBulletResistStacks[client] = 0;
-	g_hTimers[client][BulletResist] = INVALID_HANDLE;
-
-	return Plugin_Stop;
+	g_hTimers[client][BulletResist] = null;
 }
 
-Action Timer_RemoveBlastResist(Handle timer, int client)
+public void Timer_RemoveBlastResist(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][BlastResist] != timer)
-		return Plugin_Stop;
+		return;
 	
 	g_iBlastResistStacks[client] = 0;
-	g_hTimers[client][BlastResist] = INVALID_HANDLE;
-
-	return Plugin_Stop;
+	g_hTimers[client][BlastResist] = null;
 }
 
-Action Timer_RemoveMeleeResist(Handle timer, int client)
+public void Timer_RemoveMeleeResist(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][MeleeResist] != timer)
-		return Plugin_Stop;
+		return;
 	
 	g_iMeleeResistStacks[client] = 0;
-	g_hTimers[client][MeleeResist] = INVALID_HANDLE;
-
-	return Plugin_Stop;
+	g_hTimers[client][MeleeResist] = null;
 }
 
-Action Timer_RemoveCritResist(Handle timer, int client)
+public void Timer_RemoveCritResist(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][CritResist] != timer)
-		return Plugin_Stop;
+		return;
 	
 	g_iCritResistStacks[client] = 0;
-	g_hTimers[client][CritResist] = INVALID_HANDLE;
-
-	return Plugin_Stop;
+	g_hTimers[client][CritResist] = null;
 }
 
-Action Timer_RemoveBonkBoyBuff(Handle timer, int client)
+public void Timer_RemoveBonkBoyBuff(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][BonkBoy] != timer)
-		return Plugin_Stop;
+		return;
 	
 	g_iBonkBoyStacks[client] = 0;
-	g_hTimers[client][BonkBoy] = INVALID_HANDLE;
-
-	return Plugin_Stop;
+	g_hTimers[client][BonkBoy] = null;
+	RF2_CalculatePlayerMaxSpeed(client);
 }
-Action Timer_BarrierDepletion(Handle timer, int client)
+
+public Action Timer_BarrierDepletion(Handle timer, int client)
 {
-	if (!IsClientInGame(client) || !IsPlayerAlive(client))
+	if (!(client = GetClientOfUserId(client)) || !IsPlayerAlive(client) || !RF2_IsEnabled())
 	{
-		g_hTimers[client][BarrierDepletion] = INVALID_HANDLE;
+		g_hTimers[client][BarrierDepletion] = null;
 		g_fCurrentBarrier[client] = 0.0;
 		return Plugin_Stop;
 	}
@@ -1965,70 +1953,18 @@ Action Timer_BarrierDepletion(Handle timer, int client)
 	if (g_fCurrentBarrier[client] <= 0.0)
 	{
 		g_fCurrentBarrier[client] = 0.0;
-		g_hTimers[client][BarrierDepletion] = INVALID_HANDLE;
+		g_hTimers[client][BarrierDepletion] = null;
 		return Plugin_Stop;
 	}
 	
 	return Plugin_Continue;
 }
 
-Action Timer_SentryAmmoRegen(Handle timer, int buildingRef)
+public Action Timer_CorpseBloomHeal(Handle timer, int client)
 {
-	int buildingIndex = EntRefToEntIndex(buildingRef);
-	
-	if (buildingIndex == INVALID_ENT_REFERENCE)
+	if (!(client = GetClientOfUserId(client)) || !IsPlayerAlive(client) || !RF2_IsEnabled() || RF2_GetPlayerItemAmount(client, g_iAccursedApparition) == 0)
 	{
-		if (buildingRef >= 0 && buildingRef < 2049)
-			g_bRocketRegenToggle[buildingRef] = false;
-		
-		return Plugin_Stop;
-	}
-	
-	int builder = GetEntPropEnt(buildingIndex, Prop_Send, "m_hBuilder");
-	
-	if (IsPlayer(builder) && IsPlayerAlive(builder) 
-		&& RF2_GetPlayerItemAmount(builder, ItemEngi_Toadstool) > 0
-		&& !GetEntProp(buildingIndex, Prop_Send, "m_bBuilding") && !GetEntProp(buildingIndex, Prop_Send, "m_bHasSapper") 
-		&& !GetEntProp(buildingIndex, Prop_Send, "m_bCarried") && !GetEntProp(buildingIndex, Prop_Send, "m_bPlacing"))
-	{
-		int currentSentryBullet = GetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells");
-		int currentSentryRocket = GetEntProp(buildingIndex, Prop_Send, "m_iAmmoRockets");
-		
-		int bulletRegen = RoundToNearest(RF2_CalcItemMod(builder, ItemEngi_Toadstool, 2));
-		int rocketRegen = RoundToNearest(RF2_CalcItemMod(builder, ItemEngi_Toadstool, 3));
-		
-		switch (GetEntProp(buildingIndex, Prop_Send, "m_iUpgradeLevel"))
-		{
-			case 1:
-			{
-				SetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells", iclamp(currentSentryBullet + bulletRegen, 0, 150));
-			}
-			case 2:
-			{
-				SetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells", iclamp(currentSentryBullet + bulletRegen, 0, 200));
-			}
-			case 3:
-			{
-				SetEntProp(buildingIndex, Prop_Send, "m_iAmmoShells", iclamp(currentSentryBullet + bulletRegen, 0, 200));
-				
-				if (g_bRocketRegenToggle[buildingIndex])
-				{
-					SetEntProp(buildingIndex, Prop_Send, "m_iAmmoRockets", iclamp(currentSentryRocket + rocketRegen, 0, 20));
-				}
-				
-				g_bRocketRegenToggle[buildingIndex] = !g_bRocketRegenToggle[buildingIndex];
-			}
-		}
-	}
-	
-	return Plugin_Continue;
-}
-
-Action Timer_CorpseBloomHeal(Handle timer, int client)
-{
-	if (!IsClientInGame(client) || !IsPlayerAlive(client) || RF2_GetPlayerItemAmount(client, g_iAccursedApparition) == 0)
-	{
-		g_hTimers[client][AccursedApparition] = INVALID_HANDLE;
+		g_hTimers[client][AccursedApparition] = null;
 		g_fStoredHealing[client] = 0.0;
 		return Plugin_Stop;
 	}
@@ -2077,10 +2013,10 @@ Action Timer_CorpseBloomHeal(Handle timer, int client)
 				g_fCurrentBarrier[client] = float(RF2_GetCalculatedMaxHealth(client));
 			}
 			
-			if (g_hTimers[client][BarrierDepletion] == INVALID_HANDLE)
+			if (g_hTimers[client][BarrierDepletion] == null)
 			{
 				g_hTimers[client][BarrierDepletion] =
-					CreateTimer(1.0, Timer_BarrierDepletion, client, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+					CreateTimer(1.0, Timer_BarrierDepletion, GetClientUserId(client), TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 			}
 		}
 		newHealth = maxHP;		//cap healing to max hp
@@ -2101,18 +2037,22 @@ Action Timer_CorpseBloomHeal(Handle timer, int client)
 	if (g_fStoredHealing[client] <= 0.0)
 	{
 		g_fStoredHealing[client] = 0.0;
-		g_hTimers[client][AccursedApparition] = INVALID_HANDLE;
+		g_hTimers[client][AccursedApparition] = null;
 		return Plugin_Stop;
 	}
 	
 	return Plugin_Continue;
 }
 
-Action Timer_ForgottenKingDamage(Handle timer, int client)
+public Action Timer_ForgottenKingDamage(Handle timer, int client)
 {
-	int maxTicks = RoundToNearest(RF2_GetItemMod(g_iForgottenKings, 1) + RF2_CalcItemMod(client, g_iForgottenKings, 2, -1));
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+	{
+		return Plugin_Stop;
+	}
 	
-	if (!IsClientInGame(client) || !IsPlayerAlive(client) || g_iForgottenKingsTicksLeft[client] <= maxTicks - 2)
+	int maxTicks = RoundToNearest(RF2_GetItemMod(g_iForgottenKings, 1) + RF2_CalcItemMod(client, g_iForgottenKings, 2, -1));
+	if (!IsPlayerAlive(client) || g_iForgottenKingsTicksLeft[client] <= maxTicks - 2)
 	{
 		RF2_HealPlayer(client, RoundToNearest(g_fStoredDOT[client]));
 		CleanupDot(client);
@@ -2142,65 +2082,58 @@ Action Timer_ForgottenKingDamage(Handle timer, int client)
 	return Plugin_Continue;
 }
 
-Action Timer_FireHomingRocket(Handle timer, int client)
+public Action Timer_FireHomingRocket(Handle timer, int client)
 {
-	if (!IsValidClient(client) || !IsPlayerAlive(client))	
-        return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !IsPlayerAlive(client) || !RF2_IsEnabled())
+		return Plugin_Stop;
 
     float damage = RF2_GetItemMod(g_isPeacebreaker, 3);
     float speed = RF2_GetItemMod(g_isPeacebreaker, 4);
-
     EmitSoundToAll(SND_LAW_FIRE, client, _, _, _, 0.6);
     RF2_FireHomingProjectile(client, damage, speed);
-
-    
     g_isPeacebreakerRocketsRemaining[client]--;
     if (g_isPeacebreakerRocketsRemaining[client] <= 0)
     {
-        
 		return Plugin_Stop;
     }
 
     return Plugin_Continue;
 }
 
-Action Timer_AimframeMarkOn(Handle timer, int client)
+public Action Timer_AimframeMarkOn(Handle timer, int client)
 {
-	if (!IsClientInGame(client) || !IsPlayerAlive(client) || RF2_GetPlayerItemAmount(client, g_iAimframe) == 0)
+	if (!(client = GetClientOfUserId(client)) || !IsPlayerAlive(client) || !RF2_IsEnabled() || RF2_GetPlayerItemAmount(client, g_iAimframe) == 0)
 	{
-		g_hTimers[client][AimframeMarkOn] = INVALID_HANDLE;
+		g_hTimers[client][AimframeMarkOn] = null;
 		return Plugin_Stop;
 	}
 	
 	int enemy = GetRandomAimframeTarget(client);
-	
 	if (enemy != -1)
 	{
 		RF2_ToggleGlow(enemy, true);
 		ApplyCustomCondition(enemy, 2, RF2_GetItemMod(g_iAimframe, 1));
-		
-		g_hTimers[enemy][AimframeMarkOff] = CreateTimer(RF2_GetItemMod(g_iAimframe, 1), Timer_AimframeMarkOff, enemy);
+		g_hTimers[enemy][AimframeMarkOff] = CreateTimer(RF2_GetItemMod(g_iAimframe, 1), Timer_AimframeMarkOff, GetClientUserId(enemy));
 	}
 	
 	return Plugin_Continue;
 }
 
-Action Timer_AimframeMarkOff(Handle timer, int client)
+public void Timer_AimframeMarkOff(Handle timer, int client)
 {
-	if (client == 0)
-		return Plugin_Stop;
+	if (!(client = GetClientOfUserId(client)) || !RF2_IsEnabled())
+		return;
 	
 	if (g_hTimers[client][AimframeMarkOff] != timer)
-		return Plugin_Stop;
+		return;
 	
 	RF2_ToggleGlow(client, false);
 	for (int i = 1; i <= MaxClients; i++)
 	{
 		g_bAimframeAssists[client][i] = false;
 	}
-	g_hTimers[client][AimframeMarkOff] = INVALID_HANDLE;
 	
-	return Plugin_Stop;
+	g_hTimers[client][AimframeMarkOff] = null;
 }
 
 void ApplyDotDamage(int client, float damage)
@@ -2229,10 +2162,9 @@ void ApplyDotDamage(int client, float damage)
 
 void CleanupDot(int client)
 {
-	if (g_hTimers[client][ForgottenKing] != INVALID_HANDLE)
+	if (g_hTimers[client][ForgottenKing] != null)
     {
-        
-		g_hTimers[client][ForgottenKing] = INVALID_HANDLE;
+		g_hTimers[client][ForgottenKing] = null;
     }
 
     g_fStoredDOT[client] = 0.0;
@@ -2307,7 +2239,7 @@ float fmax(float val1, float val2)
 	return val1 > val2 ? val1 : val2;
 }
 
-int iclamp(int val, int min, int max)
+stock int iclamp(int val, int min, int max)
 {
 	if (val > max)
 		return max;
@@ -2524,4 +2456,27 @@ float GetEntityMaxHP(int client)
 	}
 	
 	return maxHP;
+}
+
+bool HasParasightDamageBoost(int weapon, int damageType, int damageCustom)
+{
+	if (damageType & DMG_MELEE)
+		return false;
+		
+	if (damageCustom == TF_CUSTOM_BLEEDING || damageCustom == TF_CUSTOM_BURNING
+		|| damageCustom == TF_CUSTOM_BURNING_ARROW || damageCustom == TF_CUSTOM_BURNING_FLARE)
+	{
+		return false;
+	}
+	
+	if (!IsValidEntity(weapon))
+	{
+		return false;
+	}
+	
+	static char classname[128];
+	GetEntityClassname(weapon, classname, sizeof(classname));
+	return !StrEqual(classname, "tf_weapon_flamethrower") 
+			&& !StrEqual(classname, "tf_weapon_rocketlauncher_fireball")
+			&& StrContains(classname, "tf_weapon_sniperrifle") == -1;
 }
