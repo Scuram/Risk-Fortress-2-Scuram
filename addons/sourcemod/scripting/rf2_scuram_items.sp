@@ -9,7 +9,7 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-
+#define DMG_MELEE DMG_BLAST_SURFACE
 #define MAX_CUSTOM_CONDITIONS 10
 #define SND_LAW_FIRE "weapons/sentry_rocket.wav"
 #define SND_GLASS_BREAK "physics/glass/glass_sheet_break3.wav"
@@ -833,7 +833,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			changed = true;
 		}
 		
-		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && !(damageType & DMG_CLUB))
+		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && HasParasightDamageBoost(weapon, damageType, damageCustom))
 		{
 			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iParasight, 2);
 			changed = true;
@@ -864,7 +864,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			}
 		}
 		
-		if (RF2_GetPlayerItemAmount(attacker, g_iHEAVYOneManArmy) > 0 && TF2_GetPlayerClass(attacker) == TFClass_Heavy && (damageType & DMG_CLUB))
+		if (RF2_GetPlayerItemAmount(attacker, g_iHEAVYOneManArmy) > 0 && TF2_GetPlayerClass(attacker) == TFClass_Heavy && (damageType & DMG_MELEE))
 		{
 			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iHEAVYOneManArmy, 4);
 			changed = true;
@@ -915,7 +915,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 
 	if (IsValidClient(victim))
 	{
-		if (RF2_GetPlayerItemAmount(victim, g_iDEMOFusedPlates) > 0 && TF2_GetPlayerClass(victim) == TFClass_DemoMan && HasBoots_Wearable(victim) && damageType & DMG_CLUB)
+		if (RF2_GetPlayerItemAmount(victim, g_iDEMOFusedPlates) > 0 && TF2_GetPlayerClass(victim) == TFClass_DemoMan && HasBoots_Wearable(victim) && damageType & DMG_MELEE)
 		{
 			damage *= 1.0 - RF2_GetItemMod(g_iDEMOFusedPlates, 0) - RF2_CalcItemMod(victim, g_iDEMOFusedPlates, 1, -1);
 			changed = true;
@@ -1042,7 +1042,7 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 				changed = true;
 			}
 			
-			if (damageType & DMG_CLUB)
+			if (damageType & DMG_MELEE)
 			{
 				g_iMeleeResistStacks[victim] += 1;
 				float meleeResist = 0.0;
@@ -1355,7 +1355,7 @@ public Action OnSkeletonDamage(int victim, int &attacker, int &inflictor,
 			changed = true;
 		}
 		
-		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && !(damagetype & DMG_CLUB))
+		if (RF2_GetPlayerItemAmount(attacker, g_iParasight) > 0 && HasParasightDamageBoost(weapon, damagetype, 0))
 		{
 			damage *= 1.0 + RF2_CalcItemMod(attacker, g_iParasight, 2);
 			changed = true;
@@ -2466,4 +2466,27 @@ float GetEntityMaxHP(int client)
 	}
 	
 	return maxHP;
+}
+
+bool HasParasightDamageBoost(int weapon, int damageType, int damageCustom)
+{
+	if (damageType & DMG_MELEE)
+		return false;
+		
+	if (damageCustom == TF_CUSTOM_BLEEDING || damageCustom == TF_CUSTOM_BURNING
+		|| damageCustom == TF_CUSTOM_BURNING_ARROW || damageCustom == TF_CUSTOM_BURNING_FLARE)
+	{
+		return false;
+	}
+	
+	if (!IsValidEntity(weapon))
+	{
+		return false;
+	}
+	
+	static char classname[128];
+	GetEntityClassname(weapon, classname, sizeof(classname));
+	return !StrEqual(classname, "tf_weapon_flamethrower") 
+			&& !StrEqual(classname, "tf_weapon_rocketlauncher_fireball")
+			&& StrContains(classname, "tf_weapon_sniperrifle") == -1;
 }
