@@ -820,7 +820,6 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 			}
 		}
 		
-		
 		if (RF2_GetPlayerItemAmount(attacker, g_iDeadHead) > 0)
 		{
 			float damageMult = 1.0;
@@ -999,7 +998,6 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 				}
 				
 				g_hTimers[victim][BulletResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveBulletResist, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
-				
 				damage *= 1.0 - bulletResist;
 				changed = true;
 			}
@@ -1037,7 +1035,6 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 				}
 				
 				g_hTimers[victim][BlastResist] = CreateTimer(RF2_GetItemMod(g_iDieRegimePanzerung, 24), Timer_RemoveBlastResist, GetClientUserId(victim), TIMER_FLAG_NO_MAPCHANGE);
-				
 				damage *= 1.0 - blastResist;
 				changed = true;
 			}
@@ -1135,12 +1132,11 @@ public Action RF2_OnTakeDamage(int victim, int &attacker, int &inflictor, float 
 	}
 	
 	damage = fmax(damage, 1.0);
-	
 	return changed ? Plugin_Changed : Plugin_Continue;
 }
 
 public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float &damage, int &damageType, int &weapon, 
-	float damageForce[3], float damagePosition[3], int damageCustom)
+	float damageForce[3], float damagePosition[3], int damageCustom, int attackerItem, int inflictorItem, float &procCoeff)
 {
 	bool changed = false;
 	bool selfDamage = victim == attacker;
@@ -1158,7 +1154,6 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 	{
 		char classname[64];
 		GetEdictClassname(inflictor, classname, sizeof(classname));
-		
 		if (StrEqual(classname, "tf_projectile_pipe"))
 		{
 			float damageReduction = 1 / ( 1 + ( 1 / RF2_GetItemMod(g_iDEMOFusedPlates, 5) * RF2_GetPlayerItemAmount(victim, g_iDEMOFusedPlates)));	// don't ask
@@ -1170,21 +1165,16 @@ public Action RF2_OnTakeDamage2(int victim, int &attacker, int &inflictor, float
 	if (IsValidClient(victim) && RF2_GetPlayerItemAmount(victim, g_iForgottenKings) > 0 && !(damageType & DMG_DOT) && (!(damageType & DMG_SLASH) || IsSkeleton(attacker)) && damageType != 2056)
 	{
 		float origDamage = damage;
-		
 		if (IsBuilding(inflictor) && !IsSentryRocketDamage(inflictor))
 		{
 			origDamage *= 0.4;
 		}
 			
-		
 		float damageInstant = origDamage * RF2_GetItemMod(g_iForgottenKings, 0);
-		
 		float damageDOT = origDamage - damageInstant;
-		
 		g_fStoredDOT[victim] += damageDOT;
 		g_iForgottenKingsTicksLeft[victim] = RoundToNearest(RF2_GetItemMod(g_iForgottenKings, 1) + RF2_CalcItemMod(victim, g_iForgottenKings, 2, -1));
 		g_fDamagePerTick[victim] = g_fStoredDOT[victim] / g_iForgottenKingsTicksLeft[victim];
-		
 		damage = damageInstant;
 		changed = true;
 		
